@@ -2,20 +2,121 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"time"
+
 	policyManager "github.com/chris-cmsoft/concom/policy-manager"
 	"github.com/chris-cmsoft/concom/runner"
 	"github.com/chris-cmsoft/concom/runner/proto"
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
-	"time"
 )
 
 type CompliancePlugin struct {
 	logger hclog.Logger
 	data   map[string]interface{}
 	config map[string]string
+}
+
+type Vulnerability struct {
+	CVE struct {
+		ID           string `json:"id"`
+		Descriptions []struct {
+			Lang  string `json:"lang"`
+			Value string `json:"value"`
+		} `json:"descriptions"`
+		Metrics struct {
+			CvssMetricV2 []struct {
+				BaseSeverity string `json:"baseSeverity"`
+			} `json:"cvssMetricV2"`
+		} `json:"metrics"`
+	} `json:"cve"`
+}
+
+// NVDResponse represents the NVD API response structure
+type NVDResponse struct {
+	Vulnerabilities []Vulnerability `json:"vulnerabilities"`
+}
+
+// KnownVulnerability represents a simplified structure for OPA
+type KnownVulnerability struct {
+	CVEID       string `json:"cve_id"`
+	Severity    string `json:"severity"`
+	Description string `json:"description"`
+}
+
+// FetchVulnerabilitiesForUbuntu queries the NVD API for vulnerabilities for a given Ubuntu version
+func FetchVulnerabilitiesForUbuntu(version string) ([]KnownVulnerability, error) {
+
+	url := "https://services.nvd.nist.gov/rest/json/cves/2.0"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	q := req.URL.Query()
+	q.Add("cpeName", fmt.Sprintf("cpe:2.3:o:canonical:ubuntu_linux:%s", version))
+	q.Add("cvssV3Severity", "CRITICAL")
+	q.Add("resultsPerPage", "20")
+	req.URL.RawQuery = q.Encode()
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making request to NVD API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected response status: %v", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
+
+	var nvdResponse NVDResponse
+	err = json.Unmarshal(body, &nvdResponse)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing JSON: %v", err)
+	}
+
+	// Transform to KnownVulnerability for OPA
+	var knownVulnerabilities []KnownVulnerability
+	for _, vuln := range nvdResponse.Vulnerabilities {
+		if len(vuln.CVE.Descriptions) > 0 && len(vuln.CVE.Metrics.CvssMetricV2) > 0 {
+			knownVuln := KnownVulnerability{
+				CVEID:       vuln.CVE.ID,
+				Severity:    vuln.CVE.Metrics.CvssMetricV2[0].BaseSeverity,
+				Description: vuln.CVE.Descriptions[0].Value,
+			}
+			knownVulnerabilities = append(knownVulnerabilities, knownVuln)
+		}
+	}
+	return knownVulnerabilities, nil
+}
+
+func SaveToJSON(filename string, data []KnownVulnerability) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("error creating file: %v", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	err = encoder.Encode(data)
+	if err != nil {
+		return fmt.Errorf("error encoding JSON: %v", err)
+	}
+	return nil
 }
 
 // Configure, PrepareForEval, and Eval are called at different times during the plugin execution lifecycle,
@@ -60,6 +161,19 @@ func (l *CompliancePlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 }
 
 func (l *CompliancePlugin) PrepareForEval(req *proto.PrepareForEvalRequest) (*proto.PrepareForEvalResponse, error) {
+
+	knownVulnerabilities, err := FetchVulnerabilitiesForUbuntu("18.04")
+	if err != nil {
+		log.Fatalf("Failed to fetch vulnerabilities: %v", err)
+	}
+
+	filename := "vulnerabilities.json"
+	err = SaveToJSON(filename, knownVulnerabilities)
+	if err != nil {
+		log.Fatalf("Failed to save vulnerabilities to file: %v", err)
+	}
+
+	fmt.Printf("Vulnerabilities saved to %s\n", filename)
 
 	// PrepareForEval is called once on every scheduled plugin execution.
 	// Here you should collect the data that should be evaluated with policies or checks.
