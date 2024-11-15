@@ -66,7 +66,7 @@ func installRequiredPackages(logger hclog.Logger) error {
 		logger.Error("error installing packages: 'bunzip2', 'libopenscap8'")
 		return err
 	}
-
+	return nil
 }
 
 // Installs OSCAP on the target machine
