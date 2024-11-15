@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	policyManager "github.com/chris-cmsoft/concom/policy-manager"
@@ -110,23 +109,6 @@ func FetchVulnerabilitiesForUbuntu(version string) ([]Violation, error) {
 		}
 	}
 	return violations, nil
-}
-
-// SaveToJSON saves the violations to a JSON file
-func SaveToJSON(filename string, data []Violation) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("error creating file: %v", err)
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	err = encoder.Encode(data)
-	if err != nil {
-		return fmt.Errorf("error encoding JSON: %v", err)
-	}
-	return nil
 }
 
 // Configure, PrepareForEval, and Eval are called at different times during the plugin execution lifecycle,
