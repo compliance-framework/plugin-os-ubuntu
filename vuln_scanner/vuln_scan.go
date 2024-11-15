@@ -71,7 +71,7 @@ func installRequiredPackages(logger hclog.Logger) error {
 
 // Installs OSCAP on the target machine
 func RunOSCAPScan(logger hclog.Logger) error {
-	installRequiredPackages()
+	installRequiredPackages(logger)
 	// Get the Linux Standard Base release (e.g. jammy) and download the OSV content
 	lsbReleaseCommand := exec.Command("lsb_release", "-cs")
 	lsbRelease, err := lsbReleaseCommand.Output()
