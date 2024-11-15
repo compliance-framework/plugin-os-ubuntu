@@ -174,19 +174,11 @@ func (l *CompliancePlugin) PrepareForEval(req *proto.PrepareForEvalRequest) (*pr
 }
 
 func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse, error) {
-
-	// Eval is used to run policies against the data you've collected in PrepareForEval.
-	// Eval will be called N times for every scheduled plugin execution where N is the amount of matching policies
-	// passed to the agent.
-
-	// When a user passes multiple policy bundles to the agent, each will be passed to Eval in turn to run against the
-	// same data collected in PrepareForEval.
-
 	ctx := context.TODO()
 	start_time := time.Now().Format(time.RFC3339)
 
-	// The Policy Manager aggregates much of the policy execution and output structuring.
 	response := runner.NewCallableEvalResponse()
+	hasViolations := false
 
 	for _, violation := range l.data {
 		violationMap := map[string]interface{}{
@@ -201,39 +193,24 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 			"violation": []interface{}{violationMap},
 		}
 
-		// Execute the policy for each individual violation
 		newResults, err := policyManager.
 			New(ctx, l.logger, request.BundlePath).
 			Execute(ctx, "security", dataMap)
 
+		if err != nil {
+			return &proto.EvalResponse{}, err
+		}
+
 		for _, result := range newResults {
-
-			// There are no violations reported from the policies.
-			// We'll send the observation back to the agent
-			if len(result.Violations) == 0 {
-				response.AddObservation(&proto.Observation{
-					Id:          uuid.New().String(),
-					Title:       "The plugin succeeded. No compliance issues to report.",
-					Description: "The plugin policies did not return any violations. The configuration is in compliance with policies.",
-					Collected:   time.Now().Format(time.RFC3339),
-					Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339), // Add one month for the expiration
-					RelevantEvidence: []*proto.Evidence{
-						{
-							Description: fmt.Sprintf("Policy %v was evaluated, and no violations were found on machineId: %s", result.Policy.Package.PurePackage(), "ARN:12345"),
-						},
-					},
-				})
-			}
-
-			// There are violations in the policy checks.
-			// We'll send these observations back to the agent
 			if len(result.Violations) > 0 {
+				hasViolations = true
+
 				observation := &proto.Observation{
 					Id:          uuid.New().String(),
 					Title:       fmt.Sprintf("The plugin found violations for policy %s on machineId: %s", result.Policy.Package.PurePackage(), "ARN:12345"),
 					Description: fmt.Sprintf("Observed %d violation(s) for policy %s within the Plugin on machineId: %s.", len(result.Violations), result.Policy.Package.PurePackage(), "ARN:12345"),
 					Collected:   time.Now().Format(time.RFC3339),
-					Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339), // Add one month for the expiration
+					Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339),
 					RelevantEvidence: []*proto.Evidence{
 						{
 							Description: fmt.Sprintf("Policy %v was evaluated, and %d violations were found on machineId: %s", result.Policy.Package.PurePackage(), len(result.Violations), "ARN:12345"),
@@ -251,21 +228,31 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 						RelatedObservations: []string{observation.Id},
 					})
 				}
-
 			}
 		}
-
-		if err != nil {
-			return &proto.EvalResponse{}, err
-		}
-
-		response.AddLogEntry(&proto.LogEntry{
-			Title: "Plugin checks completed",
-			Start: start_time,
-			End:   time.Now().Format(time.RFC3339),
-		})
-
 	}
+
+	// Add a "success" observation only if no violations were found
+	if !hasViolations {
+		response.AddObservation(&proto.Observation{
+			Id:          uuid.New().String(),
+			Title:       "The plugin succeeded. No compliance issues to report.",
+			Description: "The plugin policies did not return any violations. The configuration is in compliance with policies.",
+			Collected:   time.Now().Format(time.RFC3339),
+			Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339),
+			RelevantEvidence: []*proto.Evidence{
+				{
+					Description: fmt.Sprintf("All policies were evaluated, and no violations were found on machineId: %s", "ARN:12345"),
+				},
+			},
+		})
+	}
+
+	response.AddLogEntry(&proto.LogEntry{
+		Title: "Plugin checks completed",
+		Start: start_time,
+		End:   time.Now().Format(time.RFC3339),
+	})
 
 	return response.Result(), nil
 }
@@ -279,7 +266,7 @@ func main() {
 	ubuntuOS := &CompliancePlugin{
 		logger: logger,
 	}
-	// pluginMap is the map of plugins we can dispense.
+
 	logger.Debug("initiating plugin")
 
 	goplugin.Serve(&goplugin.ServeConfig{
