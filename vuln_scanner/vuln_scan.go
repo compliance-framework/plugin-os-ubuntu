@@ -9,7 +9,6 @@ import (
 	"os/exec"
 
 	"github.com/hashicorp/go-hclog"
-	aptClient "github.com/sigmonsays/go-apt-client"
 )
 
 func downloadOVALContent(osvFileName string) (err error) {
@@ -44,31 +43,20 @@ func downloadOVALContent(osvFileName string) (err error) {
 }
 func installRequiredPackages(logger hclog.Logger) error {
 	// Install requirements
-	// pkgs := make([]*aptClient.Package, 0)
-	// bunzipPkg, err := aptClient.Search("bzip2")
-	// if err != nil {
-	// 	log.Fatal("error finding package 'bzip2'")
-	// 	return err
-	// }
-	// //pkgs = append(pkgs, bunzipPkg...)
-	// _, installErr := aptClient.Install(bunzipPkg...)
-	// if installErr != nil {
-	// 	logger.Error("error installing package: 'bzip2'")
-	// 	return installErr
-	// }
+	updateOutput := exec.Command("sudo", "apt-get", "update")
+	_, updateError := updateOutput.Output()
+	if updateError != nil {
+		logger.Error(fmt.Sprintf("error updating packages: %v", updateError))
+		return updateError
+	}
 
-	oscapPkg, err := aptClient.Search("libopenscap8")
+	output := exec.Command("sudo", "apt-get", "install", "-y", "libopenscap8", "bzip2")
+	_, err := output.Output()
 	if err != nil {
-		logger.Error("error finding package 'libopenscap8'")
+		logger.Error(fmt.Sprintf("error installing packages: %v", err))
 		return err
 	}
-	// pkgs = append(pkgs, oscapPkg...)
 
-	_, installOscapErr := aptClient.Install(oscapPkg...)
-	if installOscapErr != nil {
-		logger.Error("error installing packages: 'libopenscap8'")
-		return installOscapErr
-	}
 	return nil
 }
 
