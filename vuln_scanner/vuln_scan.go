@@ -67,7 +67,7 @@ func installRequiredPackages(logger hclog.Logger) error {
 
 	_, installOscapErr := aptClient.Install(oscapPkg...)
 	if installOscapErr != nil {
-		logger.Error("error installing packages: 'bzip2', 'libopenscap8'")
+		logger.Error("error installing packages: 'bzip2'")
 		return installOscapErr
 	}
 	return nil
