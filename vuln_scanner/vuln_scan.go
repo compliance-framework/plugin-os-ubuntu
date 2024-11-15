@@ -44,7 +44,6 @@ func downloadOVALContent(osvFileName string) (err error) {
 	return nil
 }
 func installRequiredPackages(logger hclog.Logger) error {
-	exec.Command("ssh", "-i", "~/ssh-test-key.pem", "ubuntu@ec2-3-8-194-197.eu-west-2.compute.amazonaws.com")
 	// Install requirements
 	pkgs := make([]*aptClient.Package, 0)
 	bunzipPkg, err := aptClient.Search("bunzip2")
@@ -64,7 +63,7 @@ func installRequiredPackages(logger hclog.Logger) error {
 	_, installErr := aptClient.Install(pkgs...)
 	if installErr != nil {
 		logger.Error("error installing packages: 'bunzip2', 'libopenscap8'")
-		return err
+		return installErr
 	}
 	return nil
 }
