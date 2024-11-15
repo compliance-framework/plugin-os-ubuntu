@@ -13,7 +13,7 @@ import (
 	aptClient "github.com/sigmonsays/go-apt-client"
 )
 
-func downloadOVALContent(lsb_release string, osvFileName string) (err error) {
+func downloadOVALContent(osvFileName string) (err error) {
 	url := fmt.Sprintf("https://security-metadata.canonical.com/oval/%v", osvFileName)
 
 	// Create the file
@@ -80,7 +80,7 @@ func RunOSCAPScan(logger hclog.Logger) error {
 		return err
 	}
 	osvFileName := fmt.Sprintf("com.ubuntu.%v.usn.oval.xml.bz2", lsbRelease)
-	err = downloadOVALContent(string(lsbRelease), osvFileName)
+	err = downloadOVALContent(osvFileName)
 	if err != nil {
 		logger.Error("could not download oval content")
 		return err
