@@ -45,25 +45,30 @@ func downloadOVALContent(osvFileName string) (err error) {
 }
 func installRequiredPackages(logger hclog.Logger) error {
 	// Install requirements
-	pkgs := make([]*aptClient.Package, 0)
+	// pkgs := make([]*aptClient.Package, 0)
 	bunzipPkg, err := aptClient.Search("bzip2")
 	if err != nil {
 		log.Fatal("error finding package 'bzip2'")
 		return err
 	}
-	pkgs = append(pkgs, bunzipPkg...)
+	//pkgs = append(pkgs, bunzipPkg...)
+	_, installErr := aptClient.Install(bunzipPkg...)
+	if installErr != nil {
+		logger.Error("error installing package: 'libopenscap8'")
+		return installErr
+	}
 
 	oscapPkg, err := aptClient.Search("libopenscap8")
 	if err != nil {
 		logger.Error("error finding package 'libopenscap8'")
 		return err
 	}
-	pkgs = append(pkgs, oscapPkg...)
+	// pkgs = append(pkgs, oscapPkg...)
 
-	_, installErr := aptClient.Install(pkgs...)
-	if installErr != nil {
+	_, installOscapErr := aptClient.Install(oscapPkg...)
+	if installOscapErr != nil {
 		logger.Error("error installing packages: 'bzip2', 'libopenscap8'")
-		return installErr
+		return installOscapErr
 	}
 	return nil
 }
