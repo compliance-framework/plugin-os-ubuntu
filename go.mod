@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-plugin v1.6.2
+	github.com/sigmonsays/go-apt-client v0.0.0-20231129205926-cd26c16b1293
 )
 
 require (
