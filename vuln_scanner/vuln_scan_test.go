@@ -20,3 +20,10 @@ func TestDownloadOVALContent(t *testing.T) {
 		t.Fatalf("error downloading oval content: %v", err)
 	}
 }
+
+func TestInstallPackages(t *testing.T) {
+	err := installRequiredPackages(SetupLogger())
+	if err != nil {
+		t.Fatalf("error install required packages: %v", err)
+	}
+}

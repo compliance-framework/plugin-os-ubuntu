@@ -43,28 +43,28 @@ func downloadOVALContent(osvFileName string) (err error) {
 
 	return nil
 }
-func installRequiredPackages() {
+func installRequiredPackages(logger hclog.Logger) error {
 	exec.Command("ssh", "-i", "~/ssh-test-key.pem", "ubuntu@ec2-3-8-194-197.eu-west-2.compute.amazonaws.com")
 	// Install requirements
 	pkgs := make([]*aptClient.Package, 0)
 	bunzipPkg, err := aptClient.Search("bunzip2")
 	if err != nil {
 		log.Fatal("error finding package 'bunzip2'")
-		return
+		return err
 	}
 	pkgs = append(pkgs, bunzipPkg...)
 
 	oscapPkg, err := aptClient.Search("libopenscap8")
 	if err != nil {
-		log.Fatal("error finding package 'libopenscap8'")
-		return
+		logger.Error("error finding package 'libopenscap8'")
+		return err
 	}
 	pkgs = append(pkgs, oscapPkg...)
 
 	_, installErr := aptClient.Install(pkgs...)
 	if installErr != nil {
-		log.Fatalf("error installing packages: 'bunzip2', 'libopenscap8'")
-		return
+		logger.Error("error installing packages: 'bunzip2', 'libopenscap8'")
+		return err
 	}
 
 }
