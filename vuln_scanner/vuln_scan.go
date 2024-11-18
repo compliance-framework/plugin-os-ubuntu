@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 )
 
+// downloadOvalContent: Gets the oval content at the desired URL and writes to the given location
 func downloadOVALContent(url string, osvDownloadLocation string) (err error) {
 	// Create the file
 	out, err := os.Create(osvDownloadLocation)
