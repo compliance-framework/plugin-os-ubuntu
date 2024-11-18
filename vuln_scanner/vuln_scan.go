@@ -15,26 +15,22 @@ import (
 
 // downloadOvalContent: Gets the oval content at the desired URL and writes to the given location
 func downloadOVALContent(url string, osvDownloadLocation string) (err error) {
-	// Create the file
 	out, err := os.Create(osvDownloadLocation)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 
-	// Get the data
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	// Check server response
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	// Writer the body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err
@@ -52,7 +48,6 @@ func GetOVALContent(logger hclog.Logger, oscapContentLocation string) (*string, 
 		return nil, err
 	}
 	osvFileXMLName := fmt.Sprintf("com.ubuntu.%v.usn.oval.xml", strings.Replace(string(lsbRelease), "\n", "", -1))
-	// osvFileXMLLocation := fmt.Sprintf("%v/%v", oscapContentLocation, osvFileXMLName)
 	osvFileDownloadName := fmt.Sprintf("%v.bz2", osvFileXMLName)
 	osvFileDownloadLocation := fmt.Sprintf("%v/%v.bz2", oscapContentLocation, osvFileXMLName)
 
