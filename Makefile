@@ -1,8 +1,11 @@
-
-make recreate:
+make down:
 	docker compose down
-	# docker rm plugin-os-ubuntu-gotest-1
-	docker compose up -d 
+
+make purge:
+	make down 
+	docker image rm plugin-os-ubuntu-gotest
+make up:
+	docker compose up -d --force-recreate
 
 make test:
 	docker exec plugin-os-ubuntu-gotest-1 bash -c "go test -v ./..."
