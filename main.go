@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	policyManager "github.com/chris-cmsoft/concom/policy-manager"
@@ -20,10 +19,11 @@ import (
 
 type CompliancePlugin struct {
 	logger hclog.Logger
-	data   map[string]interface{}
+	data   []Violation
 	config map[string]string
 }
 
+// Vulnerability represents the structure of each vulnerability item in the response
 type Vulnerability struct {
 	CVE struct {
 		ID           string `json:"id"`
@@ -44,28 +44,32 @@ type NVDResponse struct {
 	Vulnerabilities []Vulnerability `json:"vulnerabilities"`
 }
 
-// KnownVulnerability represents a simplified structure for OPA
-type KnownVulnerability struct {
-	CVEID       string `json:"cve_id"`
-	Severity    string `json:"severity"`
+// Violation represents the structure used in the OPA policy
+type Violation struct {
+	Title       string `json:"title"`
 	Description string `json:"description"`
+	Severity    string `json:"severity"`
+	Remarks     string `json:"remarks"`
+	CVEID       string `json:"cve_id"`
 }
 
 // FetchVulnerabilitiesForUbuntu queries the NVD API for vulnerabilities for a given Ubuntu version
-func FetchVulnerabilitiesForUbuntu(version string) ([]KnownVulnerability, error) {
-
+func FetchVulnerabilitiesForUbuntu(version string) ([]Violation, error) {
+	// Define the NVD API URL with query parameters
 	url := "https://services.nvd.nist.gov/rest/json/cves/2.0"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
+	// Set query parameters
 	q := req.URL.Query()
 	q.Add("cpeName", fmt.Sprintf("cpe:2.3:o:canonical:ubuntu_linux:%s", version))
 	q.Add("cvssV3Severity", "CRITICAL")
-	q.Add("resultsPerPage", "20")
+	q.Add("resultsPerPage", "10")
 	req.URL.RawQuery = q.Encode()
 
+	// Perform the HTTP request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -73,10 +77,12 @@ func FetchVulnerabilitiesForUbuntu(version string) ([]KnownVulnerability, error)
 	}
 	defer resp.Body.Close()
 
+	// Check for non-200 HTTP status
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected response status: %v", resp.StatusCode)
 	}
 
+	// Read and parse the JSON response using io.ReadAll
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading response body: %v", err)
@@ -88,35 +94,21 @@ func FetchVulnerabilitiesForUbuntu(version string) ([]KnownVulnerability, error)
 		return nil, fmt.Errorf("error parsing JSON: %v", err)
 	}
 
-	// Transform to KnownVulnerability for OPA
-	var knownVulnerabilities []KnownVulnerability
+	// Transform to Violation format for OPA
+	var violations []Violation
 	for _, vuln := range nvdResponse.Vulnerabilities {
 		if len(vuln.CVE.Descriptions) > 0 && len(vuln.CVE.Metrics.CvssMetricV2) > 0 {
-			knownVuln := KnownVulnerability{
-				CVEID:       vuln.CVE.ID,
-				Severity:    vuln.CVE.Metrics.CvssMetricV2[0].BaseSeverity,
+			violation := Violation{
+				Title:       fmt.Sprintf("Vulnerability %s detected", vuln.CVE.ID),
 				Description: vuln.CVE.Descriptions[0].Value,
+				Severity:    vuln.CVE.Metrics.CvssMetricV2[0].BaseSeverity,
+				Remarks:     "Review and apply patches to address this vulnerability.",
+				CVEID:       vuln.CVE.ID,
 			}
-			knownVulnerabilities = append(knownVulnerabilities, knownVuln)
+			violations = append(violations, violation)
 		}
 	}
-	return knownVulnerabilities, nil
-}
-
-func SaveToJSON(filename string, data []KnownVulnerability) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("error creating file: %v", err)
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	err = encoder.Encode(data)
-	if err != nil {
-		return fmt.Errorf("error encoding JSON: %v", err)
-	}
-	return nil
+	return violations, nil
 }
 
 // Configure, PrepareForEval, and Eval are called at different times during the plugin execution lifecycle,
@@ -162,18 +154,11 @@ func (l *CompliancePlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 
 func (l *CompliancePlugin) PrepareForEval(req *proto.PrepareForEvalRequest) (*proto.PrepareForEvalResponse, error) {
 
+	// TODO: Loop over last each major releases of LTS versions of Ubuntu - 16.lts 18.lts 20.lts etc
 	knownVulnerabilities, err := FetchVulnerabilitiesForUbuntu("18.04")
 	if err != nil {
 		log.Fatalf("Failed to fetch vulnerabilities: %v", err)
 	}
-
-	filename := "vulnerabilities.json"
-	err = SaveToJSON(filename, knownVulnerabilities)
-	if err != nil {
-		log.Fatalf("Failed to save vulnerabilities to file: %v", err)
-	}
-
-	fmt.Printf("Vulnerabilities saved to %s\n", filename)
 
 	// PrepareForEval is called once on every scheduled plugin execution.
 	// Here you should collect the data that should be evaluated with policies or checks.
@@ -184,82 +169,83 @@ func (l *CompliancePlugin) PrepareForEval(req *proto.PrepareForEvalRequest) (*pr
 	// Local SSH Plugin: Fetch the SSH configuration from the local machine
 	// SAST Report Plugin: Convert a SAST sarif report into a usable structure for policies to be written against
 	// Azure VM Label Plugin: Collect all the VMs from the Azure API so they can be evaluated against policies
-	l.data = map[string]interface{}{
-		"foo": "bar",
-	}
+	l.data = knownVulnerabilities
 	return &proto.PrepareForEvalResponse{}, nil
 }
 
 func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse, error) {
-
-	// Eval is used to run policies against the data you've collected in PrepareForEval.
-	// Eval will be called N times for every scheduled plugin execution where N is the amount of matching policies
-	// passed to the agent.
-
-	// When a user passes multiple policy bundles to the agent, each will be passed to Eval in turn to run against the
-	// same data collected in PrepareForEval.
-
 	ctx := context.TODO()
 	start_time := time.Now().Format(time.RFC3339)
 
-	// The Policy Manager aggregates much of the policy execution and output structuring.
-	results, err := policyManager.
-		New(ctx, l.logger, request.BundlePath).
-		Execute(ctx, "local_ssh", l.data)
+	response := runner.NewCallableEvalResponse()
+	hasViolations := false
 
-	if err != nil {
-		return &proto.EvalResponse{}, err
+	for _, violation := range l.data {
+		violationMap := map[string]interface{}{
+			"cve_id":      violation.CVEID,
+			"title":       violation.Title,
+			"description": violation.Description,
+			"severity":    violation.Severity,
+			"remarks":     violation.Remarks,
+		}
+
+		dataMap := map[string]interface{}{
+			"violation": []interface{}{violationMap},
+		}
+
+		newResults, err := policyManager.
+			New(ctx, l.logger, request.BundlePath).
+			Execute(ctx, "security", dataMap)
+
+		if err != nil {
+			return &proto.EvalResponse{}, err
+		}
+
+		for _, result := range newResults {
+			if len(result.Violations) > 0 {
+				hasViolations = true
+
+				observation := &proto.Observation{
+					Id:          uuid.New().String(),
+					Title:       fmt.Sprintf("The plugin found violations for policy %s on machineId: %s", result.Policy.Package.PurePackage(), "ARN:12345"),
+					Description: fmt.Sprintf("Observed %d violation(s) for policy %s within the Plugin on machineId: %s.", len(result.Violations), result.Policy.Package.PurePackage(), "ARN:12345"),
+					Collected:   time.Now().Format(time.RFC3339),
+					Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339),
+					RelevantEvidence: []*proto.Evidence{
+						{
+							Description: fmt.Sprintf("Policy %v was evaluated, and %d violations were found on machineId: %s", result.Policy.Package.PurePackage(), len(result.Violations), "ARN:12345"),
+						},
+					},
+				}
+				response.AddObservation(observation)
+
+				for _, violation := range result.Violations {
+					response.AddFinding(&proto.Finding{
+						Id:                  uuid.New().String(),
+						Title:               violation.GetString("title", fmt.Sprintf("Validation on %s failed with violation %v", result.Policy.Package.PurePackage(), violation)),
+						Description:         violation.GetString("description", ""),
+						Remarks:             violation.GetString("remarks", ""),
+						RelatedObservations: []string{observation.Id},
+					})
+				}
+			}
+		}
 	}
 
-	response := runner.NewCallableEvalResponse()
-
-	for _, result := range results {
-
-		// There are no violations reported from the policies.
-		// We'll send the observation back to the agent
-		if len(result.Violations) == 0 {
-			response.AddObservation(&proto.Observation{
-				Id:          uuid.New().String(),
-				Title:       "The plugin succeeded. No compliance issues to report.",
-				Description: "The plugin policies did not return any violations. The configuration is in compliance with policies.",
-				Collected:   time.Now().Format(time.RFC3339),
-				Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339), // Add one month for the expiration
-				RelevantEvidence: []*proto.Evidence{
-					{
-						Description: fmt.Sprintf("Policy %v was evaluated, and no violations were found on machineId: %s", result.Policy.Package.PurePackage(), "ARN:12345"),
-					},
+	// Add a "success" observation only if no violations were found
+	if !hasViolations {
+		response.AddObservation(&proto.Observation{
+			Id:          uuid.New().String(),
+			Title:       "The plugin succeeded. No compliance issues to report.",
+			Description: "The plugin policies did not return any violations. The configuration is in compliance with policies.",
+			Collected:   time.Now().Format(time.RFC3339),
+			Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339),
+			RelevantEvidence: []*proto.Evidence{
+				{
+					Description: fmt.Sprintf("All policies were evaluated, and no violations were found on machineId: %s", "ARN:12345"),
 				},
-			})
-		}
-
-		// There are violations in the policy checks.
-		// We'll send these observations back to the agent
-		if len(result.Violations) > 0 {
-			observation := &proto.Observation{
-				Id:          uuid.New().String(),
-				Title:       fmt.Sprintf("The plugin found violations for policy %s on machineId: %s", result.Policy.Package.PurePackage(), "ARN:12345"),
-				Description: fmt.Sprintf("Observed %d violation(s) for policy %s within the Plugin on machineId: %s.", len(result.Violations), result.Policy.Package.PurePackage(), "ARN:12345"),
-				Collected:   time.Now().Format(time.RFC3339),
-				Expires:     time.Now().AddDate(0, 1, 0).Format(time.RFC3339), // Add one month for the expiration
-				RelevantEvidence: []*proto.Evidence{
-					{
-						Description: fmt.Sprintf("Policy %v was evaluated, and %d violations were found on machineId: %s", result.Policy.Package.PurePackage(), len(result.Violations), "ARN:12345"),
-					},
-				},
-			}
-			response.AddObservation(observation)
-
-			for _, violation := range result.Violations {
-				response.AddFinding(&proto.Finding{
-					Id:                  uuid.New().String(),
-					Title:               violation.GetString("title", fmt.Sprintf("Validation on %s failed with violation %v", result.Policy.Package.PurePackage(), violation)),
-					Description:         violation.GetString("description", ""),
-					Remarks:             violation.GetString("remarks", ""),
-					RelatedObservations: []string{observation.Id},
-				})
-			}
-
-		}
+			},
+		})
 	}
 
 	response.AddLogEntry(&proto.LogEntry{
@@ -268,7 +254,7 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 		End:   time.Now().Format(time.RFC3339),
 	})
 
-	return response.Result(), err
+	return response.Result(), nil
 }
 
 func main() {
@@ -277,17 +263,17 @@ func main() {
 		JSONFormat: true,
 	})
 
-	localSSH := &CompliancePlugin{
+	ubuntuOS := &CompliancePlugin{
 		logger: logger,
 	}
-	// pluginMap is the map of plugins we can dispense.
+
 	logger.Debug("initiating plugin")
 
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: runner.HandshakeConfig,
 		Plugins: map[string]goplugin.Plugin{
 			"runner": &runner.RunnerGRPCPlugin{
-				Impl: localSSH,
+				Impl: ubuntuOS,
 			},
 		},
 		GRPCServer: goplugin.DefaultGRPCServer,
