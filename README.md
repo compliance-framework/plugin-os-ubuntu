@@ -38,3 +38,10 @@ The process follows the methodology in https://avleonov.com/2022/10/04/how-to-pe
 3. Perform an oscap scan and output the results to the desired location
 4. Process the results into a format for the policies
 5. Check the results against the policies for violations, and send findings and observations
+
+## Testing
+
+Some of the tests can only be ran within a docker container running Ubuntu
+
+To run these locally, run
+`make up` and `make test`
