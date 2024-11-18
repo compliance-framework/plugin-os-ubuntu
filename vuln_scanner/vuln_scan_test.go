@@ -52,7 +52,8 @@ func TestDownloadOVALContent(t *testing.T) {
 	setupTestDataFolder(t)
 	ovalContent := "com.ubuntu.jammy.usn.oval.xml.bz2"
 	downloadLocation := fmt.Sprintf("%v/%v", testDataFolder, ovalContent)
-	err := downloadOVALContent(ovalContent, downloadLocation)
+	url := fmt.Sprintf("https://security-metadata.canonical.com/oval/%v", ovalContent)
+	err := downloadOVALContent(url, downloadLocation)
 	if err != nil {
 		t.Fatalf("error downloading oval content: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestDownloadOVALContent(t *testing.T) {
 
 func TestInstallPackages(t *testing.T) {
 	enforceUbuntu(t)
-	err := installRequiredPackages(setupLogger())
+	err := InstallRequiredPackages(setupLogger())
 	if err != nil {
 		t.Fatalf("error installing required packages: %v", err)
 	}
@@ -82,7 +83,14 @@ func TestInstallPackages(t *testing.T) {
 func TestRunOSCAPScan(t *testing.T) {
 	enforceUbuntu(t)
 	setupTestDataFolder(t)
-	resultsLoc, err := RunOSCAPScan(setupLogger(), testDataFolder)
+	logger := setupLogger()
+	InstallRequiredPackages(logger)
+	ovalContentName, err := GetOVALContent(logger, testDataFolder)
+	if err != nil {
+		t.Fatalf("error getting oval content: %v", err)
+	}
+	var resultsLoc *string
+	resultsLoc, err = RunOSCAPScan(logger, testDataFolder, *ovalContentName)
 	if err != nil {
 		t.Fatalf("error testing oscap scan: %v", err)
 	}

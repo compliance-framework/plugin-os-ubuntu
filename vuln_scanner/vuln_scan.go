@@ -13,9 +13,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 )
 
-func downloadOVALContent(osvDownloadName string, osvDownloadLocation string) (err error) {
-	url := fmt.Sprintf("https://security-metadata.canonical.com/oval/%v", osvDownloadName)
-
+func downloadOVALContent(url string, osvDownloadLocation string) (err error) {
 	// Create the file
 	out, err := os.Create(osvDownloadLocation)
 	if err != nil {
@@ -43,30 +41,9 @@ func downloadOVALContent(osvDownloadName string, osvDownloadLocation string) (er
 
 	return nil
 }
-func installRequiredPackages(logger hclog.Logger) error {
-	// Install requirements
-	updateOutput := exec.Command("sudo", "apt-get", "update")
-	_, updateError := updateOutput.Output()
-	if updateError != nil {
-		logger.Error(fmt.Sprintf("error updating packages: %v", updateError))
-		return updateError
-	}
 
-	output := exec.Command("sudo", "apt-get", "install", "-y", "libopenscap8", "bzip2")
-	_, err := output.Output()
-	if err != nil {
-		logger.Error(fmt.Sprintf("error installing packages: %v", err))
-		return err
-	}
-
-	return nil
-}
-
-// RunOSCAPSCan: Installs OSCAP, downloads the content, and runs a vulnerability scan
-func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) (*string, error) {
-	installRequiredPackages(logger)
-	logger.Info("Succesfully installed required packages.")
-	// Get the Linux Standard Base release (e.g. jammy) and download the OSV content
+// GetOVALContent: Gets the OVAL content for this Ubuntu version and returns the name of the XML
+func GetOVALContent(logger hclog.Logger, oscapContentLocation string) (*string, error) {
 	lsbReleaseCommand := exec.Command("lsb_release", "-cs")
 	lsbRelease, err := lsbReleaseCommand.Output()
 	if err != nil {
@@ -74,13 +51,15 @@ func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) (*string, er
 		return nil, err
 	}
 	osvFileXMLName := fmt.Sprintf("com.ubuntu.%v.usn.oval.xml", strings.Replace(string(lsbRelease), "\n", "", -1))
-	osvFileXMLLocation := fmt.Sprintf("%v/%v", oscapContentLocation, osvFileXMLName)
+	// osvFileXMLLocation := fmt.Sprintf("%v/%v", oscapContentLocation, osvFileXMLName)
 	osvFileDownloadName := fmt.Sprintf("%v.bz2", osvFileXMLName)
 	osvFileDownloadLocation := fmt.Sprintf("%v/%v.bz2", oscapContentLocation, osvFileXMLName)
 
 	logger.Info(fmt.Sprintf("Downloading file %v and storing at %v.", osvFileDownloadName, osvFileDownloadLocation))
 
-	err = downloadOVALContent(osvFileDownloadName, osvFileDownloadLocation)
+	url := fmt.Sprintf("https://security-metadata.canonical.com/oval/%v", osvFileDownloadName)
+
+	err = downloadOVALContent(url, osvFileDownloadLocation)
 	if err != nil {
 		logger.Error(fmt.Sprintf("could not download oval content with url '%v'", osvFileDownloadName))
 		return nil, err
@@ -95,10 +74,35 @@ func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) (*string, er
 		return nil, err
 	}
 
-	// Run the scan
+	return &osvFileXMLName, nil
+
+}
+
+func InstallRequiredPackages(logger hclog.Logger) error {
+	// Install requirements
+	updateOutput := exec.Command("sudo", "apt-get", "update")
+	_, updateError := updateOutput.Output()
+	if updateError != nil {
+		logger.Error(fmt.Sprintf("error updating packages: %v", updateError))
+		return updateError
+	}
+
+	output := exec.Command("sudo", "apt-get", "install", "-y", "libopenscap8", "bzip2")
+	_, err := output.Output()
+	if err != nil {
+		logger.Error(fmt.Sprintf("error installing packages: %v", err))
+		return err
+	}
+	logger.Info("Succesfully installed required packages.")
+	return nil
+}
+
+// RunOSCAPSCan: Installs OSCAP, downloads the content, and runs a vulnerability scan
+func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string, ovalContentName string) (*string, error) {
 	resultsLoc := fmt.Sprintf("%v/results.xml", oscapContentLocation)
-	scanCommand := exec.Command("oscap", "oval", "eval", "--results", resultsLoc, osvFileXMLLocation)
-	_, err = scanCommand.Output()
+	ovalContentLocation := fmt.Sprintf("%v/%v", oscapContentLocation, ovalContentName)
+	scanCommand := exec.Command("oscap", "oval", "eval", "--results", resultsLoc, ovalContentLocation)
+	_, err := scanCommand.Output()
 	if err != nil {
 		logger.Error("error performing scan OSV file")
 		return nil, err
@@ -130,8 +134,8 @@ func GetScanReport(logger hclog.Logger, resultsLocation string) (*ScanResults, e
 }
 
 // ProcessReport: Process the report struct into a format that can be evaluated by our policies
-func ProcessReport(logger hclog.Logger, scanResults *ScanResults) []KnownVulnerability {
-	vulns := make([]KnownVulnerability, 0)
+func ProcessReport(logger hclog.Logger, scanResults *ScanResults) []Violation {
+	vulns := make([]Violation, 0)
 	violationIDs := make([]string, 0)
 	for _, res := range scanResults.ResultDefinitions {
 		if res.Result == "true" {
@@ -145,7 +149,7 @@ func ProcessReport(logger hclog.Logger, scanResults *ScanResults) []KnownVulnera
 				if ref.RefSource != "CVE" {
 					continue
 				}
-				vulns = append(vulns, KnownVulnerability{CVEID: ref.RefID, Severity: def.Metadata.Advisory.Severity, Description: def.Metadata.Description})
+				vulns = append(vulns, Violation{CVEID: ref.RefID, Severity: def.Metadata.Advisory.Severity, Description: def.Metadata.Description})
 			}
 		}
 

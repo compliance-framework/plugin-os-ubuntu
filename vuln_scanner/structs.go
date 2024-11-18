@@ -2,10 +2,12 @@ package vuln_scanner
 
 import "encoding/xml"
 
-type KnownVulnerability struct {
-	CVEID       string `json:"cve_id"`
-	Severity    string `json:"severity"`
+// Violation represents the structure used in the OPA policy
+type Violation struct {
+	Title       string `json:"title"`
 	Description string `json:"description"`
+	Severity    string `json:"severity"`
+	CVEID       string `json:"cve_id"`
 }
 
 type ScanResults struct {
@@ -14,26 +16,14 @@ type ScanResults struct {
 	ResultDefinitions []ResultDefinition `xml:"results>system>definitions>definition"`
 }
 
-// type OvalDefinitions struct {
-// 	Definitions []Definition `xml:"definitions>definition"`
-// }
-
-// type OvalResults struct {
-// 	XMLName xml.Name `xml:"results"`
-// 	System  System   `xml:"system"`
-// }
-
 type OvalDefinition struct {
 	DefinitionID string   `xml:"id,attr"`
 	Metadata     Metadata `xml:"metadata"`
 }
 
-// type System struct {
-// 	Definitions []ResultDefinition `xml:"definitions>definition"`
-// }
-
 type Metadata struct {
 	Advisory    Advisory    `xml:"advisory"`
+	Title       string      `xml:"title"`
 	Description string      `xml:"description"`
 	References  []Reference `xml:"reference"`
 }
