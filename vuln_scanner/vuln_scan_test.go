@@ -80,6 +80,22 @@ func TestInstallPackages(t *testing.T) {
 	}
 }
 
+func TestGetOVALContent(t *testing.T) {
+	enforceUbuntu(t)
+	setupTestDataFolder(t)
+	logger := setupLogger()
+	InstallRequiredPackages(logger)
+	_, err := GetOVALContent(logger, testDataFolder)
+	if err != nil {
+		t.Fatalf("error getting oval content on first attempt: %v", err)
+	}
+	_, err = GetOVALContent(logger, testDataFolder)
+	if err != nil {
+		t.Fatalf("error getting already existing oval content (second attempt): %v", err)
+	}
+	t.Cleanup(cleanupTests)
+}
+
 func TestRunOSCAPScan(t *testing.T) {
 	enforceUbuntu(t)
 	setupTestDataFolder(t)

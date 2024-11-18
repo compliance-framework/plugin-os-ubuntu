@@ -41,6 +41,7 @@ func downloadOVALContent(url string, osvDownloadLocation string) (err error) {
 
 // GetOVALContent: Gets the OVAL content for this Ubuntu version and returns the name of the XML
 func GetOVALContent(logger hclog.Logger, oscapContentLocation string) (*string, error) {
+
 	lsbReleaseCommand := exec.Command("lsb_release", "-cs")
 	lsbRelease, err := lsbReleaseCommand.Output()
 	if err != nil {
@@ -50,25 +51,38 @@ func GetOVALContent(logger hclog.Logger, oscapContentLocation string) (*string, 
 	osvFileXMLName := fmt.Sprintf("com.ubuntu.%v.usn.oval.xml", strings.Replace(string(lsbRelease), "\n", "", -1))
 	osvFileDownloadName := fmt.Sprintf("%v.bz2", osvFileXMLName)
 	osvFileDownloadLocation := fmt.Sprintf("%v/%v.bz2", oscapContentLocation, osvFileXMLName)
+	osvFileLocation := fmt.Sprintf("%v/%v", oscapContentLocation, osvFileXMLName)
 
-	logger.Info(fmt.Sprintf("Downloading file %v and storing at %v.", osvFileDownloadName, osvFileDownloadLocation))
-
-	url := fmt.Sprintf("https://security-metadata.canonical.com/oval/%v", osvFileDownloadName)
-
-	err = downloadOVALContent(url, osvFileDownloadLocation)
+	// Check if the download exists
+	_, err = os.Stat(osvFileDownloadLocation)
 	if err != nil {
-		logger.Error(fmt.Sprintf("could not download oval content with url '%v'", osvFileDownloadName))
-		return nil, err
+		logger.Info(fmt.Sprintf("Downloading file %v and storing at %v.", osvFileDownloadName, osvFileDownloadLocation))
+		url := fmt.Sprintf("https://security-metadata.canonical.com/oval/%v", osvFileDownloadName)
+		err = downloadOVALContent(url, osvFileDownloadLocation)
+		if err != nil {
+			logger.Error(fmt.Sprintf("could not download oval content with url '%v'", osvFileDownloadName))
+			return nil, err
+		}
+	} else {
+		logger.Debug("OVAL content already downloaded")
 	}
-	logger.Info("Succesfully downloaded OVAL content.")
 
-	// Unzip the OVAL content
-	unzipCommand := exec.Command("bunzip2", osvFileDownloadLocation)
-	_, err = unzipCommand.Output()
+	// Check if the unzipped file exists
+	_, err = os.Stat(osvFileLocation)
 	if err != nil {
-		logger.Error(fmt.Sprintf("error unzipping OSV file: '%v'", osvFileDownloadLocation))
-		return nil, err
+		logger.Info("Unzipping file")
+		// Unzip the OVAL content
+		unzipCommand := exec.Command("bunzip2", osvFileDownloadLocation)
+		_, err = unzipCommand.Output()
+		if err != nil {
+			logger.Error(fmt.Sprintf("error unzipping OSV file: '%v'", osvFileDownloadLocation))
+			return nil, err
+		}
+	} else {
+		logger.Debug("OVAL content already exists")
 	}
+
+	logger.Info("Succesfully downloaded and unzipped OVAL content.")
 
 	return &osvFileXMLName, nil
 
