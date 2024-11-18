@@ -109,17 +109,10 @@ func TestFormatResults(t *testing.T) {
 	}
 	vulns := ProcessReport(logger, results)
 	logger.Info(fmt.Sprintf("Vulnerabilties: %v", vulns[0].CVEID))
-	if len(vulns) != 243 {
-		t.Fatalf("did not find expected number of vulnerabilities (243)")
+	if len(vulns) != 1 {
+		t.Fatalf("did not find expected number of vulnerabilities (1)")
 	}
-	highSeverityVulns := 0
-	for _, v := range vulns {
-		if v.Severity == "High" {
-			highSeverityVulns += 1
-			logger.Debug(fmt.Sprintf("Vuln of severity high, ID %v and desc: %v", v.CVEID, v.Description))
-		}
-	}
-	if highSeverityVulns != 2 {
-		t.Fatalf("did not find expected number of high-severity vulnerabilities (2)")
+	if vulns[0].Severity != "Medium" || vulns[0].CVEID != "CVE-2024-45016" {
+		t.Fatalf("did not find expected vulnerability with severity medium and CVE 'CVE-2024-45016', got %v and %v", vulns[0].Severity, vulns[0].CVEID)
 	}
 }
