@@ -3,56 +3,98 @@ package vuln_scanner
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/go-hclog"
 )
 
-func SetupLogger() hclog.Logger {
+var testDataFolder string = "/tmp/test_data"
+
+func setupLogger() hclog.Logger {
 	return hclog.New(&hclog.LoggerOptions{
 		Level:      hclog.Debug,
 		JSONFormat: true,
 	})
 }
 
-func SetupTests(testDataFolder string) error {
-	return os.MkdirAll("/tmp/test_data", os.ModePerm) // os.ModePerm gives 0777 permissions
+func setupTestDataFolder(t *testing.T) {
+	err := os.MkdirAll(testDataFolder, os.ModePerm) // os.ModePerm gives 0777 permissions
+	if err != nil {
+		t.Fatalf("error setting up test data folder: %v", err)
+	}
 }
 
-func CleanupTests() {
-	os.RemoveAll("/tmp/test_data")
+func cleanupTests() {
+	os.RemoveAll(testDataFolder)
 }
 
-// func TestDownloadOVALContent(t *testing.T) {
-// 	// logger := SetupLogger()
-// 	err := downloadOVALContent("com.ubuntu.jammy.usn.oval.xml.bz2")
-// 	if err != nil {
-// 		t.Fatalf("error downloading oval content: %v", err)
-// 	}
-// }
+func enforceUbuntu(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("test requires linux, skipping test")
+	}
+	lsb, err := exec.Command("lsb_release", "-ds").Output()
+	if err != nil {
+		t.Skip("test requires ubuntu and lsb-release, skipping test")
+	}
+	if !strings.Contains(string(lsb), "Ubuntu") {
+		t.Skip("test requires ubuntu, skipping")
+	}
+}
 
-// func TestInstallPackages(t *testing.T) {
-// 	err := installRequiredPackages(SetupLogger())
-// 	if err != nil {
-// 		t.Fatalf("error install required packages: %v", err)
-// 	}
-// }
+// Ubuntu-specific tests (run via Docker)
 
-// func TestRunOSCAPScan(t *testing.T) {
-// 	testDataFolder := "/tmp/test_data"
-// 	err := SetupTests(testDataFolder)
-// 	if err != nil {
-// 		t.Fatalf("error setting up test folder: %v", err)
-// 	}
-// 	err = RunOSCAPScan(SetupLogger(), testDataFolder)
-// 	if err != nil {
-// 		t.Fatalf("error testing oscap scan: %v", err)
-// 	}
-// 	t.Cleanup(CleanupTests)
-// }
+// TestDownloadOVALContent: Tests OVAL content is correctly downloaded
+func TestDownloadOVALContent(t *testing.T) {
+	enforceUbuntu(t)
+	setupTestDataFolder(t)
+	ovalContent := "com.ubuntu.jammy.usn.oval.xml.bz2"
+	downloadLocation := fmt.Sprintf("%v/%v", testDataFolder, ovalContent)
+	err := downloadOVALContent(ovalContent, downloadLocation)
+	if err != nil {
+		t.Fatalf("error downloading oval content: %v", err)
+	}
+	_, err = os.Stat(downloadLocation)
+	if err != nil {
+		t.Fatalf("no oval content downloaded")
+	}
+	t.Cleanup(cleanupTests)
+}
+
+func TestInstallPackages(t *testing.T) {
+	enforceUbuntu(t)
+	err := installRequiredPackages(setupLogger())
+	if err != nil {
+		t.Fatalf("error installing required packages: %v", err)
+	}
+	_, err = exec.Command("bunzip2", "--version").Output()
+	if err != nil {
+		t.Fatalf("error installing bunzip2: %v", err)
+	}
+	_, err = exec.Command("oscap", "--version").Output()
+	if err != nil {
+		t.Fatalf("error installing oscap: %v", err)
+	}
+}
+
+func TestRunOSCAPScan(t *testing.T) {
+	enforceUbuntu(t)
+	setupTestDataFolder(t)
+	resultsLoc, err := RunOSCAPScan(setupLogger(), testDataFolder)
+	if err != nil {
+		t.Fatalf("error testing oscap scan: %v", err)
+	}
+	_, err = os.Stat(*resultsLoc)
+	if err != nil {
+		t.Fatalf("no oval content downloaded")
+	}
+	t.Cleanup(cleanupTests)
+}
 
 func TestFormatResults(t *testing.T) {
-	logger := SetupLogger()
+	logger := setupLogger()
 	results, err := GetScanReport(logger, "../test_data/example_results.xml")
 	if err != nil {
 		t.Fatalf("error getting scan report: %v", err)
@@ -64,7 +106,6 @@ func TestFormatResults(t *testing.T) {
 	}
 	highSeverityVulns := 0
 	for _, v := range vulns {
-		// logger.Info(v.Severity)
 		if v.Severity == "High" {
 			highSeverityVulns += 1
 			logger.Debug(fmt.Sprintf("Vuln of severity high, ID %v and desc: %v", v.CVEID, v.Description))

@@ -63,7 +63,7 @@ func installRequiredPackages(logger hclog.Logger) error {
 }
 
 // RunOSCAPSCan: Installs OSCAP, downloads the content, and runs a vulnerability scan
-func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) error {
+func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) (*string, error) {
 	installRequiredPackages(logger)
 	logger.Info("Succesfully installed required packages.")
 	// Get the Linux Standard Base release (e.g. jammy) and download the OSV content
@@ -71,7 +71,7 @@ func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) error {
 	lsbRelease, err := lsbReleaseCommand.Output()
 	if err != nil {
 		logger.Error("error getting lsb_release output")
-		return err
+		return nil, err
 	}
 	osvFileXMLName := fmt.Sprintf("com.ubuntu.%v.usn.oval.xml", strings.Replace(string(lsbRelease), "\n", "", -1))
 	osvFileXMLLocation := fmt.Sprintf("%v/%v", oscapContentLocation, osvFileXMLName)
@@ -83,7 +83,7 @@ func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) error {
 	err = downloadOVALContent(osvFileDownloadName, osvFileDownloadLocation)
 	if err != nil {
 		logger.Error(fmt.Sprintf("could not download oval content with url '%v'", osvFileDownloadName))
-		return err
+		return nil, err
 	}
 	logger.Info("Succesfully downloaded OVAL content.")
 
@@ -92,18 +92,19 @@ func RunOSCAPScan(logger hclog.Logger, oscapContentLocation string) error {
 	_, err = unzipCommand.Output()
 	if err != nil {
 		logger.Error(fmt.Sprintf("error unzipping OSV file: '%v'", osvFileDownloadLocation))
-		return err
+		return nil, err
 	}
 
 	// Run the scan
-	scanCommand := exec.Command("oscap", "oval", "eval", "--results", fmt.Sprintf("%v/results.xml", oscapContentLocation), osvFileXMLLocation)
+	resultsLoc := fmt.Sprintf("%v/results.xml", oscapContentLocation)
+	scanCommand := exec.Command("oscap", "oval", "eval", "--results", resultsLoc, osvFileXMLLocation)
 	_, err = scanCommand.Output()
 	if err != nil {
 		logger.Error("error performing scan OSV file")
-		return err
+		return nil, err
 	}
 	logger.Info("Succesfully ran OSCAP scan.")
-	return nil
+	return &resultsLoc, nil
 }
 
 // GenerateReport: Runs an OSCAP scan on the target machine and returns the report
