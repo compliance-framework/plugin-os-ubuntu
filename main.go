@@ -26,8 +26,6 @@ type PluginConfig struct {
 }
 
 func (l *CompliancePlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
-	// l.config = req.Config
-
 	if req.Config["OSCAPContentPath"] == "" {
 		return nil, fmt.Errorf("no OSCAP content location supplied")
 	}
@@ -50,7 +48,6 @@ func (l *CompliancePlugin) PrepareForEval(req *proto.PrepareForEvalRequest) (*pr
 	if err != nil {
 		l.logger.Error(fmt.Sprintf("failed to get scan results: %v", err))
 	}
-	// vulnScanner.ProcessReport(l.logger, scanResults)
 	l.data = scanResults
 	return &proto.PrepareForEvalResponse{}, nil
 }
