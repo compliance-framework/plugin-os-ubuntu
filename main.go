@@ -182,7 +182,7 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 	hasViolations := false
 
 	hostname := os.Getenv("HOSTNAME")
-	response.Title = fmt.Sprintf("SSH Configuration for host: %s", hostname)
+	response.Title = fmt.Sprintf("Ubuntu vulnerabilities for host: %s", hostname)
 
 	for _, violation := range l.data {
 		violationMap := map[string]interface{}{
