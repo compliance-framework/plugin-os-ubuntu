@@ -3,7 +3,7 @@ module github.com/compliance-framework/plugin-template
 go 1.23.2
 
 require (
-	github.com/chris-cmsoft/concom v0.0.0-20241111123134-32f46c04102f
+	github.com/compliance-framework/agent v0.0.4-0.20241224140711-a461238e2d3f
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-plugin v1.6.2
