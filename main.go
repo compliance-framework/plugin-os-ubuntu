@@ -7,11 +7,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
-	policyManager "github.com/chris-cmsoft/concom/policy-manager"
-	"github.com/chris-cmsoft/concom/runner"
-	"github.com/chris-cmsoft/concom/runner/proto"
+	policyManager "github.com/compliance-framework/agent/policy-manager"
+	"github.com/compliance-framework/agent/runner"
+	"github.com/compliance-framework/agent/runner/proto"
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
@@ -179,6 +180,9 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 
 	response := runner.NewCallableEvalResponse()
 	hasViolations := false
+
+	hostname := os.Getenv("HOSTNAME")
+	response.Title = fmt.Sprintf("SSH Configuration for host: %s", hostname)
 
 	for _, violation := range l.data {
 		violationMap := map[string]interface{}{
