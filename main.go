@@ -224,11 +224,20 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 				response.AddObservation(observation)
 
 				for _, violation := range result.Violations {
+					status := proto.FindingStatus_UNKNOWN
+					statusString := proto.FindingStatus_name[int32(status)]
+
+					if violation.GetString("severity", "") == "CRITICAL" || violation.GetString("severity", "") == "HIGH" {
+						status = proto.FindingStatus_OPEN
+						statusString = proto.FindingStatus_name[int32(status)]
+					}
+
 					response.AddFinding(&proto.Finding{
 						Id:                  uuid.New().String(),
 						Title:               violation.GetString("title", fmt.Sprintf("Validation on %s failed with violation %v", result.Policy.Package.PurePackage(), violation)),
 						Description:         violation.GetString("description", ""),
 						Remarks:             violation.GetString("remarks", ""),
+						Status:              statusString,
 						RelatedObservations: []string{observation.Id},
 					})
 				}
