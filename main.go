@@ -224,13 +224,8 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 				response.AddObservation(observation)
 
 				for _, violation := range result.Violations {
-					status := proto.FindingStatus_UNKNOWN
+					status := proto.FindingStatus_OPEN
 					statusString := proto.FindingStatus_name[int32(status)]
-
-					if violation.GetString("severity", "") == "CRITICAL" || violation.GetString("severity", "") == "HIGH" {
-						status = proto.FindingStatus_OPEN
-						statusString = proto.FindingStatus_name[int32(status)]
-					}
 
 					response.AddFinding(&proto.Finding{
 						Id:                  uuid.New().String(),
