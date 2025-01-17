@@ -229,9 +229,9 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest) (*proto.EvalResponse
 
 					response.AddFinding(&proto.Finding{
 						Id:                  uuid.New().String(),
-						Title:               violation.GetString("title", fmt.Sprintf("Validation on %s failed with violation %v", result.Policy.Package.PurePackage(), violation)),
-						Description:         violation.GetString("description", ""),
-						Remarks:             violation.GetString("remarks", ""),
+						Title:               violation.Title,
+						Description:         violation.Description,
+						Remarks:             violation.Remarks,
 						Status:              statusString,
 						RelatedObservations: []string{observation.Id},
 					})
